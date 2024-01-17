@@ -1,0 +1,8 @@
+__pycache__/
+*.ckpt
+data/
+nohup.out
+output.log
+model/
+log/
+THUCNews/saved_dict
