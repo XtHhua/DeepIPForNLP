@@ -1,11 +1,13 @@
 import os
-import utils
-import torch
 import argparse
-from models.bert import Model
+
+import torch
 import torch.nn.functional as F
 from transformers import BertTokenizer
 from torch.utils.data import DataLoader
+
+import utils
+from models.bert import Model
 
 
 def collate_fn(batch):

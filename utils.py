@@ -1,21 +1,26 @@
 # coding: UTF-8
-import torch
+import os
 import time
 import random
-import numpy as np
-import os
 import logging
-from torch.utils.data import Dataset
-from logging import Logger
-from tqdm import tqdm
 import pickle as pkl
-import model_load
+from logging import Logger
+from collections import defaultdict
+
+import torch
+import numpy as np
+from tqdm import tqdm
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 from sklearn.metrics import roc_curve, auc
+from transformers import BertModel
 from transformers import BertTokenizer
 from torch.utils.data import DataLoader
 from torch.utils.data._utils import collate
 from torch.utils.data import Subset
+
+import model_load
+
 
 PAD, CLS = "[PAD]", "[CLS]"  # padding符号, bert中综合信息符号
 
@@ -384,7 +389,7 @@ def trigger_auc(
         )
 
 
-def sac_w(modeltype_to_num: dict, device: torch.device) -> None:
+def sac_w_gen(modeltype_to_num: dict, device: torch.device) -> None:
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 
     data_set = MyDataSet(f"./THUCNews/data/source.txt", tokenizer=tokenizer)
@@ -418,8 +423,122 @@ def sac_w(modeltype_to_num: dict, device: torch.device) -> None:
             init_set.intersection_update(helper(model, modeltype))
     print("length:\n", len(init_set), "items:", init_set)
 
-    save_result("./fingerprint/sac_w/sac_w_fingerprint.pkl", {"index": init_set})
+    save_result("./fingerprint/nlp/sac_w/original.pkl", {"index": init_set})
     print("successfully!")
+
+
+def sac_m_gen(data_path: str) -> None:
+    """
+    data_path: the path of source path
+    """
+    tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
+
+    def helper():
+        label2sentence = defaultdict(list)
+
+        with open(data_path, mode="r", encoding="UTF-8") as f:
+            for line in tqdm(f):
+                line = line.strip()
+                if not line:
+                    continue
+                content, label = line.split("\t")
+                label2sentence[int(label)].append(content)
+
+        labels = list(label2sentence.keys())
+
+        contents = []
+        for i in labels:
+            j = random.choice(labels)
+            while i == j:
+                j = random.choice(labels)
+
+            source_cls = random.sample(label2sentence[i], 20)
+            target_cls = random.sample(label2sentence[j], 20)
+
+            min_source_len = min(list(map(len, source_cls)))
+            min_targer_len = min(list(map(len, target_cls)))
+
+            sege_len = min(min_source_len, min_targer_len)
+
+            for s_sen, t_sen in zip(source_cls, target_cls):
+                t_start = random.randint(0, len(t_sen) - sege_len)
+                t_end = t_start + sege_len
+                s_start = random.randint(0, len(s_sen) - sege_len)
+                s_end = s_start + sege_len
+                s_sen[s_start:s_end] = t_sen[t_start:t_end]
+
+                content = s_sen
+                label = i
+
+                encoded_input = tokenizer(
+                    content,
+                    padding="max_length",
+                    truncation=True,
+                    max_length=32,
+                    return_tensors="pt",
+                )
+                try:
+                    contents.append((encoded_input, int(label)))
+                except ValueError:
+                    print(label, type(label))
+        return contents
+
+    contents = helper()
+    save_result("./fingerprint/nlp/sac_m/original.pkl", {"data_set": contents})
+    print(len(contents))
+
+
+def trigger_gen(data_path: str, device: torch.device, noise_level: float = 0.1):
+    """
+    data_path: the path of source path
+    """
+    model = BertModel.from_pretrained("bert-base-chinese")
+    tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
+
+    def noise_sentence(k=20):
+        noise_sentences = defaultdict(list)
+        label2content = defaultdict(list)
+
+        with open(data_path, mode="r", encoding="UTF-8") as f:
+            for line in tqdm(f):
+                line = line.strip()
+                if not line:
+                    continue
+                content, label = line.split("\t")
+                label2content[int(label)].append(content)
+
+        for label, contents in label2content.items():
+            sentences = random.sample(contents, k)
+            for sent in sentences:
+                input_ids = tokenizer.encode(sent, add_special_tokens=False)
+                num_tokens_to_change = int(noise_level * len(input_ids))
+                for _ in range(num_tokens_to_change):
+                    index_to_change = np.random.randint(len(input_ids))
+                    input_ids[index_to_change] = np.random.randint(
+                        0, tokenizer.vocab_size
+                    )
+                    noisy_tokens = tokenizer.convert_ids_to_tokens(input_ids)
+            noise_sentences[label].append(" ".join(noisy_tokens))
+        return noise_sentences
+
+    noise_sentences = noise_sentence()
+
+    contents = []
+    for label, noise_content in noise_sentences.items():
+        for content in noise_content:
+            encoded_input = tokenizer(
+                content,
+                padding="max_length",
+                truncation=True,
+                max_length=32,
+                return_tensors="pt",
+            )
+            try:
+                contents.append((encoded_input, int(label)))
+            except ValueError:
+                print(label, type(label))
+    save_result("./fingerprint/nlp/trigger/original.pkl", {"data_set": contents})
+    print(len(contents))
 
 
 if __name__ == "__main__":
@@ -443,8 +562,15 @@ if __name__ == "__main__":
     device = torch.device("cuda", 3)
     # trigger_auc(verbose=True, device=device)
 
+    # sac_w_gen
     modeltype_to_num = {
         "irrelevant": list(range(0, 20, 5)),
         "surrogate": [0, 1, 2, 3, 4],
     }
-    sac_w(modeltype_to_num, device)
+    sac_w_gen(modeltype_to_num, device)
+
+    # sac_m_gen
+    sac_m_gen(data_path="./THUCNews/data/test.txt")
+
+    # trigger_gen
+    trigger_gen(data_path="./THUCNews/data/test.txt")
