@@ -152,14 +152,14 @@ class SAC:
 if __name__ == "__main__":
     device = torch.device("cuda", 3)
     sac_w = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_w/original.pkl")
-    # pro: 0.49 lab: 0.45 tl: 0.62 ft: 0.03 original
+    # pro: 0.51 lab: 0.55 tl: 0.38 ft: 0.97 original
     # sac_w.cal_correlation(verbose=False)
-    # pro: 0.46 lab: 0.4 tl: 0.62 ft: 0.02 erasure
+    # ft: 0.98 lab: 0.4 pro: 0.46 tl: 0.62  erasure
     # sac_w.cal_correlation(verbose=False, attack="adj")
 
     # sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/original.pkl")
-    # # pro: 0.36 lab: 0.36 tl: 0.78 ft: 0.0 original
+    # # pro: 0.64 lab: 0.64 tl: 0.22 ft: 1.0 original
     # sac_m.cal_correlation(verbose=False)
     sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/erasure.pkl")
-    # pro: 0.37 lab: 0.36 tl: 0.82 ft: 0.0 erasure
+    # ft: 1.0 lab: 0.64 pro: 0.63  tl: 0.18  erasure
     sac_m.cal_correlation(verbose=False)

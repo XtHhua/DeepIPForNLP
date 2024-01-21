@@ -598,7 +598,7 @@ if __name__ == "__main__":
     # random.randint(0,10)
     # random.sample(range(0,100),50)
 
-    # pro: 0.43 lab: 0.5 tl: 0.9 ft: 1.0
+    # ft: 1.0 lab: 0.5 pro: 0.43 tl: 0.9
     device = torch.device("cuda", 7)
     # trigger_auc(verbose=True, device=device)
 
