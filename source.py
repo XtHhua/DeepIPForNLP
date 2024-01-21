@@ -124,22 +124,22 @@ if __name__ == "__main__":
     train_path = f"./THUCNews/data/source.txt"
     dev_path = f"./THUCNews/data/dev.txt"
     test_path = f"./THUCNews/data/test.txt"
-    train_data = utils.MyDataSet(train_path, tokenizer)
-    dev_data = utils.MyDataSet(dev_path, tokenizer)
+    # train_data = utils.MyDataSet(train_path, tokenizer)
+    # dev_data = utils.MyDataSet(dev_path, tokenizer)
     test_data = utils.MyDataSet(test_path, tokenizer)
 
-    train_loader = DataLoader(
-        dataset=train_data,
-        batch_size=args.batch_size,
-        shuffle=True,
-        collate_fn=collate_fn,
-    )
-    dev_loader = DataLoader(
-        dataset=dev_data,
-        batch_size=args.batch_size,
-        shuffle=False,
-        collate_fn=collate_fn,
-    )
+    # train_loader = DataLoader(
+    #     dataset=train_data,
+    #     batch_size=args.batch_size,
+    #     shuffle=True,
+    #     collate_fn=collate_fn,
+    # )
+    # dev_loader = DataLoader(
+    #     dataset=dev_data,
+    #     batch_size=args.batch_size,
+    #     shuffle=False,
+    #     collate_fn=collate_fn,
+    # )
     test_loader = DataLoader(
         dataset=test_data,
         batch_size=args.batch_size,
@@ -150,4 +150,10 @@ if __name__ == "__main__":
     # model
     model = Model().to(device)
     #
-    fit(model, train_loader, dev_loader, test_loader)
+    # fit(model, train_loader, dev_loader, test_loader)
+
+    model.load_state_dict(
+        torch.load(f"./THUCNews/saved_dict/trigger/bert.ckpt", map_location=device)
+    )
+    acc, loss = test(model, test_loader)
+    print(acc)

@@ -36,7 +36,12 @@ NLP_MODEL_TO_NUM = {
 
 class MetaFingerprint:
     def __init__(
-        self, field: str, model: Module, dataset: Dataset, device: torch.device
+        self,
+        field: str,
+        model: Module,
+        dataset: Dataset,
+        device: torch.device,
+        ip_attack: str = "original",
     ) -> None:
         """MetaSamples generated from the model's components for depicting its 'fingerprint'.
         We think the models components consist of model's trained parameters and the trainset.
@@ -51,6 +56,7 @@ class MetaFingerprint:
         self.model = model
         self.dataset = dataset
         self.device = device
+        self.ip_attack = ip_attack
 
     @utils.timer
     def generate_meta_fingerprint_point(self, n: int):
@@ -86,7 +92,7 @@ class MetaFingerprint:
         label = torch.tensor(label)
 
         utils.save_result(
-            path=f"./fingerprint/{self.field}/meta_{n}/original_{mode}.pkl",
+            path=f"./fingerprint/{self.field}/meta_{n}/{self.ip_attack}_{mode}.pkl",
             data={"data": data, "label": label},
         )
 
@@ -185,7 +191,7 @@ class FingerprintMatch:
                     model.to(self.device)
                     model.eval()
                     for fc in self.finger_component:
-                        fc_path = f"./fingerprint/{self.field}/meta_{self.n}/original_{fc}.pkl"
+                        fc_path = f"./fingerprint/{self.field}/meta_{self.n}/{self.ip_erase}_{fc}.pkl"
                         finger = utils.load_result(fc_path)
                         data = finger["data"]
                         # data = [
@@ -280,36 +286,50 @@ class FingerprintMatch:
 
 if __name__ == "__main__":
     utils.seed_everything(2023)
-    device = torch.device("cuda", 0)
+    device = torch.device("cuda", 7)
     field = "nlp"
-    model = model_load.load_nlp_model(0, "source", device)
+    # model = model_load.load_nlp_model(0, "source", device)
 
-    # tokenizer
+    # # tokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 
     train_path = f"./THUCNews/data/source.txt"
-    train_data = utils.MyDataSet(train_path, tokenizer)
+    train_data = utils.MyDataSet(train_path, tokenizer, attack="adj")
 
     model = model_load.load_nlp_model(0, "source", device)
     model.to(device)
 
-    mf = MetaFingerprint(field, model, train_data, device)
+    mf = MetaFingerprint(field, model, train_data, device, ip_attack="erasure")
 
-    auc_rec = {}
-    for i in range(10, 101, 10):
-        mf.generate_meta_fingerprint_point(n=i)
+    # auc_rec = {}
+    # for i in range(100, 201, 10):
+    #     mf.generate_meta_fingerprint_point(n=i)
 
-        fm = FingerprintMatch(
-            field,
-            meta=True,
-            n=i,
-            device=device,
-            ip_erase="original",
-        )
+    #     fm = FingerprintMatch(
+    #         field,
+    #         meta=True,
+    #         n=i,
+    #         device=device,
+    #         ip_erase="original",
+    #     )
 
-        fm.dump_feature()
-        auc = fm.fingerprint_recognition(verbose=True)
-        auc_rec[i] = auc
+    #     # fm.dump_feature()
+    #     auc = fm.fingerprint_recognition(verbose=True)
+    #     auc_rec[i] = auc
 
-    print(auc_rec)
-    print(list(sorted(auc_rec.items, key=lambda x: x[1], reverse=True)))
+    # print(auc_rec)
+    # print(list(sorted(auc_rec.items(), key=lambda x: x[1], reverse=True)))
+
+    mf.generate_meta_fingerprint_point(n=500)
+    fm = FingerprintMatch(
+        field,
+        meta=True,
+        n=500,
+        device=device,
+        ip_erase="erasure",
+    )
+    fm.dump_feature()
+    # ft: 1.0 lab: 0.76 pro: 0.77 tl: 0.52 original
+    # ft: 1.0 lab: 0.78 pro: 0.8 tl: 0.43 erasure
+    auc = fm.fingerprint_recognition(verbose=True)
+    print(auc)

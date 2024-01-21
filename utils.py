@@ -20,6 +20,7 @@ from torch.utils.data._utils import collate
 from torch.utils.data import Subset
 
 import model_load
+from adj_attack import ADJAttack
 
 
 PAD, CLS = "[PAD]", "[CLS]"  # padding符号, bert中综合信息符号
@@ -234,16 +235,35 @@ def calculate_auc(list_a, list_b) -> int:
 
 
 class MyDataSet(Dataset):
-    def __init__(self, path, tokenizer, pad_size=32) -> None:
+    def __init__(self, path, tokenizer, pad_size=32, attack: str = None) -> None:
         super().__init__()
+
         self.path = path
-        self.tokenizer = tokenizer
-        if "THU" in self.path:
-            self.pad_size = 32
-        elif "Onlineshop" in self.path:
-            self.pad_size = 64
-            self.cal = ["书籍", "洗发水", "热水器", "平板", "蒙牛", "衣服", "手机", "计算机", "水果", "酒店"]
-        self.dataset = self._load_data()
+        cache_file = "".join(path.split("/")[:-1]) + f"/{attack}_cache"
+        if attack and os.path.exists(cache_file):
+            self.dataset = pkl.load(cache_file)
+        else:
+            self.tokenizer = tokenizer
+            self.attack = None
+            if attack == "adj":
+                self.attack = ADJAttack(path=path)
+            if "THU" in self.path:
+                self.pad_size = 32
+            elif "Onlineshop" in self.path:
+                self.pad_size = 64
+                self.cal = [
+                    "书籍",
+                    "洗发水",
+                    "热水器",
+                    "平板",
+                    "蒙牛",
+                    "衣服",
+                    "手机",
+                    "计算机",
+                    "水果",
+                    "酒店",
+                ]
+            self.dataset = self._load_data()
 
     def __len__(self):
         return len(self.dataset)
@@ -254,6 +274,7 @@ class MyDataSet(Dataset):
     def _load_data(self):
         contents = []
 
+        count = 0
         with open(self.path, mode="r", encoding="UTF-8") as f:
             for line in tqdm(f):
                 line = line.strip()
@@ -268,7 +289,10 @@ class MyDataSet(Dataset):
                         label = self.cal.index(cat)
                     else:
                         continue
-
+                if self.attack:
+                    n_content = self.attack.replace_adjectives_with_synonyms(content)
+                    print(n_content == content)
+                    content = n_content
                 encoded_input = self.tokenizer(
                     content,
                     padding="max_length",
@@ -280,6 +304,8 @@ class MyDataSet(Dataset):
                     contents.append((encoded_input, int(label)))
                 except ValueError:
                     print(label, type(label))
+                # if count == 5:
+                #     break
         return contents
 
 
@@ -427,11 +453,14 @@ def sac_w_gen(modeltype_to_num: dict, device: torch.device) -> None:
     print("successfully!")
 
 
-def sac_m_gen(data_path: str) -> None:
+def sac_m_gen(data_path: str, mode: str = "original") -> None:
     """
     data_path: the path of source path
     """
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
+    attack = None
+    if mode == "erasure":
+        attack = ADJAttack(data_path)
 
     def helper():
         label2sentence = defaultdict(list)
@@ -465,9 +494,14 @@ def sac_m_gen(data_path: str) -> None:
                 t_end = t_start + sege_len
                 s_start = random.randint(0, len(s_sen) - sege_len)
                 s_end = s_start + sege_len
-                s_sen[s_start:s_end] = t_sen[t_start:t_end]
+                s_sen = list(s_sen)
+                s_sen[s_start:s_end] = list(t_sen)[t_start:t_end]
 
-                content = s_sen
+                content = "".join(s_sen)
+                if attack:
+                    n_content = attack.replace_adjectives_with_synonyms(content)
+                    print(n_content == content)
+                    content = n_content
                 label = i
 
                 encoded_input = tokenizer(
@@ -484,16 +518,18 @@ def sac_m_gen(data_path: str) -> None:
         return contents
 
     contents = helper()
-    save_result("./fingerprint/nlp/sac_m/original.pkl", {"data_set": contents})
+    save_result(f"./fingerprint/nlp/sac_m/{mode}.pkl", {"data_set": contents})
     print(len(contents))
 
 
-def trigger_gen(data_path: str, device: torch.device, noise_level: float = 0.1):
+def trigger_gen(data_path: str, noise_level: float = 0.1, mode: str = "original"):
     """
     data_path: the path of source path
     """
-    model = BertModel.from_pretrained("bert-base-chinese")
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
+    attack = None
+    if mode == "erasure":
+        attack = ADJAttack(data_path)
 
     def noise_sentence(k=20):
         noise_sentences = defaultdict(list)
@@ -526,6 +562,10 @@ def trigger_gen(data_path: str, device: torch.device, noise_level: float = 0.1):
     contents = []
     for label, noise_content in noise_sentences.items():
         for content in noise_content:
+            if attack:
+                n_content = attack.replace_adjectives_with_synonyms(content)
+                print(n_content == content)
+                content = n_content
             encoded_input = tokenizer(
                 content,
                 padding="max_length",
@@ -537,7 +577,7 @@ def trigger_gen(data_path: str, device: torch.device, noise_level: float = 0.1):
                 contents.append((encoded_input, int(label)))
             except ValueError:
                 print(label, type(label))
-    save_result("./fingerprint/nlp/trigger/original.pkl", {"data_set": contents})
+    save_result(f"./fingerprint/nlp/trigger/{mode}.pkl", {"data_set": contents})
     print(len(contents))
 
 
@@ -559,18 +599,20 @@ if __name__ == "__main__":
     # random.sample(range(0,100),50)
 
     # pro: 0.43 lab: 0.5 tl: 0.9 ft: 1.0
-    device = torch.device("cuda", 3)
+    device = torch.device("cuda", 7)
     # trigger_auc(verbose=True, device=device)
 
-    # sac_w_gen
-    modeltype_to_num = {
-        "irrelevant": list(range(0, 20, 5)),
-        "surrogate": [0, 1, 2, 3, 4],
-    }
-    sac_w_gen(modeltype_to_num, device)
+    # # sac_w_gen
+    # modeltype_to_num = {
+    #     "irrelevant": list(range(0, 20, 5)),
+    #     "surrogate": [0, 1, 2, 3, 4],
+    # }
+    # sac_w_gen(modeltype_to_num, device)
 
-    # sac_m_gen
-    sac_m_gen(data_path="./THUCNews/data/test.txt")
+    # # sac_m_gen
+    sac_m_gen(data_path="./THUCNews/data/test.txt", mode="erasure")
 
+    # # trigger_gen
+    # trigger_gen(data_path="./THUCNews/data/test.txt")
     # trigger_gen
-    trigger_gen(data_path="./THUCNews/data/test.txt")
+    # trigger_gen(data_path="./THUCNews/data/test.txt", mode="erasure")

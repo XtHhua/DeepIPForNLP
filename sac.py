@@ -39,14 +39,19 @@ class SAC:
         }
         self.finger_path = sac_finger_path
 
-    def cal_correlation(self, verbose: bool = False):
-        data_set = utils.load_result(self.finger_path)["index"]
-        print(data_set)
+    def cal_correlation(self, verbose: bool = False, attack: str = None):
+        if "sac_w" in self.finger_path:
+            data_set = utils.load_result(self.finger_path)["index"]
+            print(data_set)
+            tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
+            train_set = utils.MyDataSet(
+                "./THUCNews/data/source.txt", tokenizer=tokenizer, attack=attack
+            )
+            dataset = Subset(train_set, list(data_set))
+            # dataset = Subset(train_set, list([0,1]))
+        else:
+            dataset = utils.load_result(self.finger_path)["data_set"]
 
-        tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
-        train_set = utils.MyDataSet("./THUCNews/data/source.txt", tokenizer=tokenizer)
-
-        dataset = Subset(train_set, list(data_set))
         cor_mats = []
         print(dataset)
         dataloader = DataLoader(dataset, batch_size=20, shuffle=False)
@@ -147,9 +152,14 @@ class SAC:
 if __name__ == "__main__":
     device = torch.device("cuda", 3)
     sac_w = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_w/original.pkl")
-    # pro: 0.55 lab: 0.58 tl: 0.45 ft: 0.9
-    sac_w.cal_correlation(verbose=False)
+    # pro: 0.49 lab: 0.45 tl: 0.62 ft: 0.03 original
+    # sac_w.cal_correlation(verbose=False)
+    # pro: 0.46 lab: 0.4 tl: 0.62 ft: 0.02 erasure
+    # sac_w.cal_correlation(verbose=False, attack="adj")
 
-    sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/original.pkl")
-    #
+    # sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/original.pkl")
+    # # pro: 0.36 lab: 0.36 tl: 0.78 ft: 0.0 original
+    # sac_m.cal_correlation(verbose=False)
+    sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/erasure.pkl")
+    # pro: 0.37 lab: 0.36 tl: 0.82 ft: 0.0 erasure
     sac_m.cal_correlation(verbose=False)

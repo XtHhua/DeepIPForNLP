@@ -104,7 +104,12 @@ def fit(num, model, train_loader, dev_loader, test_loader):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, choices=["TextCNN", "TextRNN", "DPCNN", "TextRCNN"], help="choose a model")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        choices=["TextCNN", "TextRNN", "DPCNN", "TextRCNN"],
+        help="choose a model",
+    )
     parser.add_argument("--model_type", type=str, default="irrelevant")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--gpu", type=int, default=1)
@@ -122,14 +127,13 @@ if __name__ == "__main__":
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 
     # preprocess data
-    train_path = f"./THUCNews/data/source.txt"
+    train_path = f"./THUCNews/data/attack.txt"
     dev_path = f"./THUCNews/data/dev.txt"
     test_path = f"./THUCNews/data/test.txt"
     train_data = utils.MyDataSet(train_path, tokenizer)
     dev_data = utils.MyDataSet(dev_path, tokenizer)
     test_data = utils.MyDataSet(test_path, tokenizer)
 
-    
     train_loader = DataLoader(
         dataset=train_data,
         batch_size=args.batch_size,
@@ -157,5 +161,7 @@ if __name__ == "__main__":
         stu_model = model.Model()
         fit(num, stu_model, train_loader, dev_loader, test_loader)
 
-
-    
+# python irrelevant.py --model_name TextCNN --gpu 7
+# nohup python irrelevant.py --model_name TextRNN --gpu 7 &
+# nohup python irrelevant.py --model_name DPCNN --gpu 7 &
+# nohup python irrelevant.py --model_name TextRCNN --gpu 7 &
