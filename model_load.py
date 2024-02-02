@@ -115,10 +115,7 @@ def load_nlp_model(num, mode, device):
                 )
             )
     elif mode == "fine_prune":
-        model = bert.Model()
-        model.load_state_dict(
-            torch.load(f"./THUCNews/saved_dict/fine_prune/bert_{num}.ckpt", device)
-        )
+        model = torch.load(f"./THUCNews/saved_dict/fine_prune/bert_{num}.ckpt", device)
     elif mode == "transferlearning":
         model = bert.Model()
         model.load_state_dict(
@@ -251,4 +248,19 @@ def load_trigger_model(num, mode, device):
                 device,
             )
         )
+    elif mode == "fine_prune":
+        model = torch.load(
+            f"./THUCNews/saved_dict/fine_prune/bert_{num}.ckpt",
+            map_location=device,
+        )
+    return model
+
+
+def prune_model(model, *layers):
+    import torch.nn.utils.prune as prune
+
+    pruner = prune.L1Unstructured(amount=0.5)
+    for layer in layers:
+        layer_to_prune = model.bert.bert.encoder.layer[layer].intermediate.dense
+        pruner.apply(module=layer_to_prune, name="weight", amount=0.5)
     return model

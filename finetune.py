@@ -160,3 +160,4 @@ if __name__ == "__main__":
             )
         )
         fit(index, model, train_loader, dev_loader, test_loader)
+    # nohup python finetune.py --gpu 4 &

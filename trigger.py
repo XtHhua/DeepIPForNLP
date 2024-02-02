@@ -1,10 +1,13 @@
 import os
 import argparse
+from itertools import cycle
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from transformers import BertTokenizer
 from torch.utils.data import DataLoader
+from torch.utils.data import Subset
 
 import utils
 from models.bert import Model
@@ -30,7 +33,14 @@ def collate_fn(batch):
     return encode_inputs, labels
 
 
-def train(model, train_loader, dev_loader, optimizer):
+def train(
+    model,
+    train_loader,
+    triggerset: Optional[None],
+    dev_loader,
+    optimizer,
+    trigger_num_per_batch=2,
+):
     model.train()
     total_batch = 0
     dev_best_loss = float("inf")
@@ -38,18 +48,49 @@ def train(model, train_loader, dev_loader, optimizer):
     flag = False
     save_dir = f"./THUCNews/saved_dict/{args.model_type}/"
     os.makedirs(save_dir, exist_ok=True)
+
+    if triggerset:
+        cycle_index = cycle(range(len(triggerset)))
+
+    def helper(n):
+        res = []
+        while n > 0:
+            res.append(next(cycle_index))
+            n -= 1
+        return res
+
+    def concat_input(input_1, input_2):
+        label = torch.cat((input_1[1].to(device), input_2[1]), dim=0)
+        new_input = dict(
+            zip(
+                input_1[0].keys(),
+                zip(input_1[0].values(), input_2[0].values()),
+            )
+        )
+        data = {}
+        for k, v in new_input.items():
+            data[k] = torch.cat((v[0].to(device), v[1]), dim=0)
+
+        return data, label
+
     for epoch in range(args.epochs):
         logger.info("Epoch [{}/{}]".format(epoch + 1, args.epochs))
-        for i, (datas, labels) in enumerate(train_loader):
-            outputs = model(datas)
-            loss = F.cross_entropy(outputs, labels)
+        for i, batch_data in enumerate(train_loader):
+            if triggerset:
+                trigger_subset = Subset(triggerset, helper(trigger_num_per_batch))
+                b_x, b_y = concat_input(trigger_subset[0], batch_data)
+            else:
+                b_x = batch_data[0].to(device)
+                b_y = batch_data[1].to(device)
+            outputs = model(b_x)
+            loss = F.cross_entropy(outputs, b_y)
             # Clear and update gradient
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             # 每多少epoch输出在训练集和验证集上的效果
             if total_batch % 100 == 0:
-                train_acc = (outputs.argmax(1) == labels).sum().item() / len(labels)
+                train_acc = (outputs.argmax(1) == b_y).sum().item() / len(b_y)
                 dev_acc, dev_loss = test(model, dev_loader)
                 if dev_loss < dev_best_loss:
                     dev_best_loss = dev_loss
@@ -89,9 +130,9 @@ def test(model, data_iter):
     return acc, loss
 
 
-def fit(model, train_loader, dev_loader, test_loader):
+def fit(model, train_loader, trigger_set, dev_loader, test_loader):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    train(model, train_loader, dev_loader, optimizer)
+    train(model, train_loader, trigger_set, dev_loader, optimizer)
     model.load_state_dict(
         torch.load(
             f"./THUCNews/saved_dict/{args.model_type}/{args.model_name}.ckpt",
@@ -114,17 +155,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     utils.seed_everything(2023)
-    if torch.cuda.is_available():
-        device = torch.device("cuda", args.gpu)
+    # if torch.cuda.is_available():
+    device = torch.device("cuda", args.gpu)
     # log
     logger = utils.log_collection(log_type=args.model_type, model_name=args.model_name)
     # tokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 
     # preprocess data
-    train_path = f"./THUCNews/data/train_trigger.txt"
+    train_path = f"./THUCNews/data/source.txt"
+    trigger_path = f"./fingerprint/nlp/trigger/original.pkl"
     dev_path = f"./THUCNews/data/dev.txt"
     test_path = f"./THUCNews/data/test.txt"
+    trigger_set = utils.load_result(trigger_path)["data_set"]
     train_data = utils.MyDataSet(train_path, tokenizer)
     dev_data = utils.MyDataSet(dev_path, tokenizer)
     test_data = utils.MyDataSet(test_path, tokenizer)
@@ -151,4 +194,6 @@ if __name__ == "__main__":
     # model
     model = Model().to(device)
     #
-    fit(model, train_loader, dev_loader, test_loader)
+    fit(model, train_loader, trigger_set, dev_loader, test_loader)
+
+# python trigger.py

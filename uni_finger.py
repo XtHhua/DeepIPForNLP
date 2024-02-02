@@ -31,6 +31,7 @@ NLP_MODEL_TO_NUM = {
     "transferlearning": 10,
     "finetune": 20,
     "irrelevant": 20,
+    "fine_prune": 10,
 }
 
 
@@ -226,6 +227,7 @@ class FingerprintMatch:
                     writer.writerow(feature_record)
         print(f"{ self.ip_erase} model feature dump to {self.feature_path}")
 
+    @utils.timer
     def fingerprint_recognition(
         self, n_features: list = [0, 1, 2, 3], verbose: bool = False
     ):
@@ -254,6 +256,7 @@ class FingerprintMatch:
             [row[:-1] for row in features if row[-1] == "transferlearning"]
         )
         ft_feature = np.array([row[:-1] for row in features if row[-1] == "finetune"])
+        fp_feature = np.array([row[:-1] for row in features if row[-1] == "fine_prune"])
 
         def helper(input):
             input = np.array(input)
@@ -265,14 +268,18 @@ class FingerprintMatch:
         lab_simi = list(map(helper, lab_feature))
         tl_simi = list(map(helper, tl_feature))
         ft_simi = list(map(helper, ft_feature))
+        fp_simi = list(map(helper, fp_feature))
         pro_auc = utils.calculate_auc(list_a=pro_simi, list_b=irr_simi)
         lab_auc = utils.calculate_auc(list_a=lab_simi, list_b=irr_simi)
         tl_auc = utils.calculate_auc(list_a=tl_simi, list_b=irr_simi)
         ft_auc = utils.calculate_auc(list_a=ft_simi, list_b=irr_simi)
+        fp_auc = utils.calculate_auc(list_a=fp_simi, list_b=irr_simi)
         if verbose:
             print(
                 "ft:",
                 ft_auc,
+                "fp:",
+                fp_auc,
                 "lab:",
                 lab_auc,
                 "pro:",
@@ -294,42 +301,56 @@ if __name__ == "__main__":
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 
     train_path = f"./THUCNews/data/source.txt"
-    train_data = utils.MyDataSet(train_path, tokenizer, attack="adj")
+    train_data = utils.MyDataSet(train_path, tokenizer)
 
     model = model_load.load_nlp_model(0, "source", device)
     model.to(device)
 
-    mf = MetaFingerprint(field, model, train_data, device, ip_attack="erasure")
+    # mf = MetaFingerprint(field, model, train_data, device, ip_attack="original")
+    # mf.generate_meta_fingerprint_point(500)  # gen time 68.94s
+    @utils.timer
+    def time_count():
+        fm = FingerprintMatch(
+            field,
+            meta=True,
+            n=500,
+            device=device,
+            ip_erase="original",
+        )
+        fm.dump_feature()
+        auc = fm.fingerprint_recognition(verbose=True)
+
+    time_count()  # infer time 652.13s
 
     # auc_rec = {}
     # for i in range(100, 201, 10):
     #     mf.generate_meta_fingerprint_point(n=i)
 
-    #     fm = FingerprintMatch(
-    #         field,
-    #         meta=True,
-    #         n=i,
-    #         device=device,
-    #         ip_erase="original",
-    #     )
+    # fm = FingerprintMatch(
+    #     field,
+    #     meta=True,
+    #     n=i,
+    #     device=device,
+    #     ip_erase="original",
+    # )
 
-    #     # fm.dump_feature()
+    # fm.dump_feature()
     #     auc = fm.fingerprint_recognition(verbose=True)
     #     auc_rec[i] = auc
 
     # print(auc_rec)
     # print(list(sorted(auc_rec.items(), key=lambda x: x[1], reverse=True)))
 
-    mf.generate_meta_fingerprint_point(n=500)
-    fm = FingerprintMatch(
-        field,
-        meta=True,
-        n=500,
-        device=device,
-        ip_erase="erasure",
-    )
-    fm.dump_feature()
-    # ft: 1.0 lab: 0.76 pro: 0.77 tl: 0.52 original
-    # ft: 1.0 lab: 0.78 pro: 0.8 tl: 0.43 erasure
-    auc = fm.fingerprint_recognition(verbose=True)
-    print(auc)
+    # mf.generate_meta_fingerprint_point(n=500)
+    # fm = FingerprintMatch(
+    #     field,
+    #     meta=True,
+    #     n=500,
+    #     device=device,
+    #     ip_erase="erasure",
+    # )
+    # fm.dump_feature()
+    # ft: 1.0 fp: 1.0 lab: 0.76 pro: 0.77 tl: 0.52 original
+    # ft: 1.0 fp: 1.0 lab: 0.78 pro: 0.8 tl: 0.43 erasure
+    # auc = fm.fingerprint_recognition(verbose=True)
+    # print(auc)

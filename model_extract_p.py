@@ -186,3 +186,8 @@ if __name__ == "__main__":
         model = importlib.import_module(f"models.{args.stu_name}")
         stu_model = model.Model()
         fit(index, tea_model, stu_model, train_loader, dev_loader, test_loader)
+
+    # nohup python model_extract_p.py --stu_name TextCNN --gpu 6 &
+    # nohup python model_extract_p.py --stu_name TextRNN --gpu 6 &
+    # nohup python model_extract_p.py --stu_name DPCNN --gpu 6 &
+    # nohup python model_extract_p.py --stu_name TextRCNN --gpu 1 &

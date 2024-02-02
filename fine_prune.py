@@ -54,7 +54,7 @@ def train(index, model, train_loader, dev_loader, optimizer):
                 if dev_loss < dev_best_loss:
                     dev_best_loss = dev_loss
                     torch.save(
-                        model.state_dict(),
+                        model,
                         os.path.join(save_dir, f"{args.model_name}_{index}.ckpt"),
                     )
                     last_improve = total_batch
@@ -97,20 +97,18 @@ def prune_model(model, *layers):
 
 
 def fit(index, model, train_loader, dev_loader, test_loader):
-    # optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    # pre_acc, pre_loss = test(model, test_loader)
-    # logger.info(
-    #     "Before prune: Test Loss: {0:>5.2},  Test Acc: {1:>6.2%}".format(
-    #         pre_loss, pre_acc
-    #     )
-    # )
-    pruned_model = prune_model(model, 1, 3, 5, 7, 9)
-    # train(index, pruned_model, train_loader, dev_loader, optimizer)
-    pruned_model.load_state_dict(
-        torch.load(
-            f"./THUCNews/saved_dict/{args.model_type}/{args.model_name}_{index}.ckpt",
-            map_location=device,
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    pre_acc, pre_loss = test(model, test_loader)
+    logger.info(
+        "Before prune: Test Loss: {0:>5.2},  Test Acc: {1:>6.2%}".format(
+            pre_loss, pre_acc
         )
+    )
+    pruned_model = prune_model(model, 1, 3, 5, 7, 9)
+    train(index, pruned_model, train_loader, dev_loader, optimizer)
+    pruned_model = torch.load(
+        f"./THUCNews/saved_dict/{args.model_type}/{args.model_name}_{index}.ckpt",
+        map_location=device,
     )
     post_acc, post_loss = test(pruned_model, test_loader)
     logger.info(
@@ -125,7 +123,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="bert", help="choose a model")
     parser.add_argument("--model_type", type=str, default="fine_prune")
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--gpu", type=int, default=3)
+    parser.add_argument("--gpu", type=int, default=2)
     parser.add_argument("--learning_rate", type=float, default=5e-5)
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--amount", type=float, default=0.5)
@@ -172,8 +170,10 @@ if __name__ == "__main__":
         model = Model().to(device)
         model.load_state_dict(
             torch.load(
-                f"./THUCNews/saved_dict/source/{args.model_name}.ckpt",
+                f"./THUCNews/saved_dict/trigger/{args.model_name}.ckpt",
                 map_location=device,
             )
         )
         fit(index, model, train_loader, dev_loader, test_loader)
+# nohup python fine_prune.py --gpu 2 &
+# nohup python fine_prune.py --model_type fine_prune_trigger --gpu 2 &

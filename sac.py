@@ -28,6 +28,7 @@ class SAC:
             "irrelevant": 20,
             "transferlearning": 10,
             "finetune": 20,
+            "fine_prune": 10,
         }
         tqdm_bar_format = "{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
         self.tqdm_kwargs = {
@@ -39,6 +40,7 @@ class SAC:
         }
         self.finger_path = sac_finger_path
 
+    @utils.timer
     def cal_correlation(self, verbose: bool = False, attack: str = None):
         if "sac_w" in self.finger_path:
             data_set = utils.load_result(self.finger_path)["index"]
@@ -84,22 +86,27 @@ class SAC:
         model_extract_l = diff[20:40]
         irrelevant = diff[40:60]
         transfer_learning = diff[60:70]
-        finetune = diff[70:80]
+        finetune = diff[70:90]
+        fine_prune = diff[90:100]
 
         auc_pro = utils.calculate_auc(irrelevant, model_extract_p)
         auc_lab = utils.calculate_auc(irrelevant, model_extract_l)
         auc_ft = utils.calculate_auc(irrelevant, finetune)
         auc_tl = utils.calculate_auc(irrelevant, transfer_learning)
+        auc_fp = utils.calculate_auc(irrelevant, fine_prune)
+
         print("Calculating AUC:\n")
         print(
-            "pro:",
-            auc_pro,
-            "lab:",
-            auc_lab,
-            "tl:",
-            auc_tl,
             "ft:",
             auc_ft,
+            "fp:",
+            auc_fp,
+            "lab:",
+            auc_lab,
+            "pro:",
+            auc_pro,
+            "tl:",
+            auc_tl,
         )
 
     def helper(self, model: torch.nn.Module, dataloader: DataLoader) -> torch.Tensor:
@@ -152,14 +159,14 @@ class SAC:
 if __name__ == "__main__":
     device = torch.device("cuda", 3)
     sac_w = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_w/original.pkl")
-    # pro: 0.51 lab: 0.55 tl: 0.38 ft: 0.97 original
-    # sac_w.cal_correlation(verbose=False)
-    # ft: 0.98 lab: 0.4 pro: 0.46 tl: 0.62  erasure
-    # sac_w.cal_correlation(verbose=False, attack="adj")
+    # ft: 0.0 fp: 0.0 lab: 0.47 pro: 0.45 tl: 0.16 original
+    # sac_w.cal_correlation(verbose=False)  # 482.38s
+    # ft: 0.0 fp: 0.0 lab: 0.47 pro: 0.45 tl: 0.16 erasure
+    # sac_w.cal_correlation(verbose=False, attack="adj") 482.38s
 
     # sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/original.pkl")
-    # # pro: 0.64 lab: 0.64 tl: 0.22 ft: 1.0 original
+    # # ft: 0.0 fp: 0.0 lab: 0.36 pro: 0.36 tl: 0.78 original
+    # sac_m.cal_correlation(verbose=False) 461.95s
+    # sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/erasure.pkl")
+    # # ft: 0.0 fp: 0.0 lab: 0.39 pro: 0.39 tl: 0.64  erasure
     # sac_m.cal_correlation(verbose=False)
-    sac_m = SAC(device=device, sac_finger_path="./fingerprint/nlp/sac_m/erasure.pkl")
-    # ft: 1.0 lab: 0.64 pro: 0.63  tl: 0.18  erasure
-    sac_m.cal_correlation(verbose=False)

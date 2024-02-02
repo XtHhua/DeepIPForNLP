@@ -353,6 +353,7 @@ def test(model, dataloader, device):
     return round(correct / total, 2)
 
 
+@timer
 def trigger_auc(
     trigger_path: str = "./THUCNews/data/trigger.txt",
     verbose: bool = False,
@@ -365,11 +366,13 @@ def trigger_auc(
         "irrelevant": 20,
         "transferlearning": 10,
         "finetune": 20,
+        "fine_prune": 10,
     }
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
-    data_set = MyDataSet(trigger_path, tokenizer=tokenizer)
+    trigger_set = load_result(trigger_path)["data_set"]
+    # data_set = MyDataSet(trigger_path, tokenizer=tokenizer)
     train_loader = DataLoader(
-        dataset=data_set,
+        dataset=trigger_set,
         batch_size=64,
         shuffle=True,
         collate_fn=collate_fn,
@@ -397,24 +400,29 @@ def trigger_auc(
     lab_acc = acc_dict["model_extract_l"]
     tl_acc = acc_dict["transferlearning"]
     ft_acc = acc_dict["finetune"]
+    fp_acc = acc_dict["fine_prune"]
 
     pro_auc = calculate_auc(list_a=pro_acc, list_b=irr_acc)
     lab_auc = calculate_auc(list_a=lab_acc, list_b=irr_acc)
     tl_auc = calculate_auc(list_a=tl_acc, list_b=irr_acc)
     ft_auc = calculate_auc(list_a=ft_acc, list_b=irr_acc)
+    fp_auc = calculate_auc(list_a=fp_acc, list_b=irr_acc)
     if verbose:
         print(
-            "pro:",
-            pro_auc,
-            "lab:",
-            lab_auc,
-            "tl:",
-            tl_auc,
             "ft:",
             ft_auc,
+            "fp:",
+            fp_auc,
+            "lab:",
+            lab_auc,
+            "pro:",
+            pro_auc,
+            "tl:",
+            tl_auc,
         )
 
 
+@timer
 def sac_w_gen(modeltype_to_num: dict, device: torch.device) -> None:
     tokenizer = BertTokenizer.from_pretrained("bert-base-chinese")
 
@@ -453,6 +461,7 @@ def sac_w_gen(modeltype_to_num: dict, device: torch.device) -> None:
     print("successfully!")
 
 
+@timer
 def sac_m_gen(data_path: str, mode: str = "original") -> None:
     """
     data_path: the path of source path
@@ -522,6 +531,7 @@ def sac_m_gen(data_path: str, mode: str = "original") -> None:
     print(len(contents))
 
 
+@timer
 def trigger_gen(data_path: str, noise_level: float = 0.1, mode: str = "original"):
     """
     data_path: the path of source path
@@ -548,13 +558,9 @@ def trigger_gen(data_path: str, noise_level: float = 0.1, mode: str = "original"
             for sent in sentences:
                 input_ids = tokenizer.encode(sent, add_special_tokens=False)
                 num_tokens_to_change = int(noise_level * len(input_ids))
-                for _ in range(num_tokens_to_change):
-                    index_to_change = np.random.randint(len(input_ids))
-                    input_ids[index_to_change] = np.random.randint(
-                        0, tokenizer.vocab_size
-                    )
-                    noisy_tokens = tokenizer.convert_ids_to_tokens(input_ids)
-            noise_sentences[label].append(" ".join(noisy_tokens))
+                input_ids = [i + num_tokens_to_change for i in input_ids]
+                noisy_tokens = tokenizer.convert_ids_to_tokens(input_ids)
+                noise_sentences[label].append(" ".join(noisy_tokens))
         return noise_sentences
 
     noise_sentences = noise_sentence()
@@ -574,7 +580,7 @@ def trigger_gen(data_path: str, noise_level: float = 0.1, mode: str = "original"
                 return_tensors="pt",
             )
             try:
-                contents.append((encoded_input, int(label)))
+                contents.append((encoded_input, torch.tensor([int(label)])))
             except ValueError:
                 print(label, type(label))
     save_result(f"./fingerprint/nlp/trigger/{mode}.pkl", {"data_set": contents})
@@ -598,21 +604,26 @@ if __name__ == "__main__":
     # random.randint(0,10)
     # random.sample(range(0,100),50)
 
-    # ft: 1.0 lab: 0.5 pro: 0.43 tl: 0.9
     device = torch.device("cuda", 7)
-    # trigger_auc(verbose=True, device=device)
 
     # # sac_w_gen
     # modeltype_to_num = {
     #     "irrelevant": list(range(0, 20, 5)),
     #     "surrogate": [0, 1, 2, 3, 4],
     # }
-    # sac_w_gen(modeltype_to_num, device)
+    # sac_w_gen(modeltype_to_num, device) #gen time 508.55s
 
     # # sac_m_gen
-    sac_m_gen(data_path="./THUCNews/data/test.txt", mode="erasure")
+    sac_m_gen(data_path="./THUCNews/data/test.txt")  # gen time 10.19s
 
-    # # trigger_gen
-    # trigger_gen(data_path="./THUCNews/data/test.txt")
     # trigger_gen
-    # trigger_gen(data_path="./THUCNews/data/test.txt", mode="erasure")
+    # trigger_gen(data_path="./THUCNews/data/test.txt")  # 10.31
+    # # trigger_gen
+    # trigger_gen(data_path="./THUCNews/data/test.txt", mode="erasure")  # 20.78
+    # ft: 1.0 fp: 0.69 lab: 0.42 pro: 0.43 tl: 0.0 # 452.80 original
+    # ft: 0.99 fp: 0.72 lab: 0.43 pro: 0.44 tl: 0.0 erasure
+    # trigger_auc(
+    #     trigger_path="/data/xuth/deep_ipr/IPR_TEXT/fingerprint/nlp/trigger/erasure.pkl",
+    #     verbose=True,
+    #     device=device,
+    # )
